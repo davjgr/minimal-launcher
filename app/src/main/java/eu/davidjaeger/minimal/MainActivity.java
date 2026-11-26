@@ -6,7 +6,13 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Typeface;
@@ -44,14 +50,17 @@ import java.util.Map;
  */
 public class MainActivity extends Activity {
 
-    // Home screen, in this order. {display name, package name}
+    // Home screen, in this order. {display name, package name, icon style}
+    // icon style: "mono" = app icon in grey/white, "mask" = only the bright
+    // shape of the app icon on a transparent background.
     private static final String[][] FAVORITES = {
-            {"YouTube", "com.google.android.youtube.tv"},
-            {"Prime Video", "com.amazon.amazonvideo.livingroom"},
-            {"Netflix", "com.netflix.ninja"},
-            {"MUBI", "com.mubi"},
-            {"Disney+", "com.disney.disneyplus"},
-            {"Apple TV", "com.apple.atve.androidtv.appletv"},
+            {"YouTube", "com.google.android.youtube.tv", "mono"},
+            {"Prime Video", "com.amazon.amazonvideo.livingroom", "mono"},
+            {"Netflix", "com.netflix.ninja", "mask"},
+            {"MUBI", "com.mubi", "mono"},
+            {"Disney+", "com.disney.disneyplus", "mono"},
+            {"Apple TV", "com.apple.atve.androidtv.appletv", "mono"},
+            {"Spotify", "com.spotify.tv.android", "mono"},
     };
 
     // "Source" entry: first package that can be launched wins.
@@ -210,14 +219,15 @@ public class MainActivity extends Activity {
             for (String[] fav : FAVORITES) {
                 final String pkg = fav[1];
                 if (launchIntentFor(pkg) == null) continue; // not installed -> skip
-                list.addView(makeRow(fav[0], loadIcon(pkg), 40, new View.OnClickListener() {
+                ColorMatrixColorFilter filter = "mask".equals(fav[2]) ? mask() : monochrome();
+                list.addView(makeRow(fav[0], loadIcon(pkg), filter, 40, new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
                         launch(pkg);
                     }
                 }));
             }
-            list.addView(makeRow("Source", null, 40, new View.OnClickListener() {
+            list.addView(makeRow("Source", new SourceIcon(), null, 40, new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     openSource();
@@ -227,7 +237,7 @@ public class MainActivity extends Activity {
             corner.setVisibility(View.GONE);
             for (Map.Entry<String, String> app : allApps().entrySet()) {
                 final String pkg = app.getKey();
-                list.addView(makeRow(app.getValue(), loadIcon(pkg), 30, new View.OnClickListener() {
+                list.addView(makeRow(app.getValue(), loadIcon(pkg), monochrome(), 30, new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
                         launch(pkg);
@@ -248,7 +258,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    private View makeRow(String title, Drawable icon, int textSp, View.OnClickListener onClick) {
+    private View makeRow(String title, Drawable icon, ColorFilter filter, int textSp,
+                         View.OnClickListener onClick) {
         final LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -265,7 +276,7 @@ public class MainActivity extends Activity {
         ImageView iv = new ImageView(this);
         if (icon != null) {
             iv.setImageDrawable(icon);
-            iv.setColorFilter(monochrome());
+            if (filter != null) iv.setColorFilter(filter);
         }
         LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(iconSize, iconSize);
         ivLp.rightMargin = dp(14);
@@ -382,9 +393,18 @@ public class MainActivity extends Activity {
         File f = dir == null ? null : new File(dir, "wallpaper.jpg");
         if (f == null || !f.exists()) {
             if (wallpaperStamp != 0) {
-                wallpaper.setImageDrawable(new GradientDrawable(
-                        GradientDrawable.Orientation.TOP_BOTTOM,
-                        new int[]{0xFF1E3347, 0xFF0E1A26, 0xFF06090D}));
+                Bitmap builtIn = null;
+                try {
+                    builtIn = BitmapFactory.decodeResource(getResources(), R.drawable.wallpaper_default);
+                } catch (Throwable ignored) {
+                }
+                if (builtIn != null) {
+                    wallpaper.setImageBitmap(builtIn);
+                } else {
+                    wallpaper.setImageDrawable(new GradientDrawable(
+                            GradientDrawable.Orientation.TOP_BOTTOM,
+                            new int[]{0xFF1E3347, 0xFF0E1A26, 0xFF06090D}));
+                }
                 wallpaperStamp = 0;
             }
             return;
@@ -503,6 +523,57 @@ public class MainActivity extends Activity {
         });
         cm.postConcat(lift);
         return new ColorMatrixColorFilter(cm);
+    }
+
+    /** Keeps only the bright parts of an icon, as white on transparent. */
+    private static ColorMatrixColorFilter mask() {
+        return new ColorMatrixColorFilter(new ColorMatrix(new float[]{
+                0, 0, 0, 0, 255,
+                0, 0, 0, 0, 255,
+                0, 0, 0, 0, 255,
+                0.9f, 1.8f, 0.35f, 0, -40
+        }));
+    }
+
+    /** Minimal "input source" mark: a screen outline with an arrow pointing in. */
+    private static class SourceIcon extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        SourceIcon() {
+            paint.setColor(Color.WHITE);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeCap(Paint.Cap.ROUND);
+            paint.setStrokeJoin(Paint.Join.ROUND);
+        }
+
+        @Override
+        public void draw(Canvas c) {
+            Rect b = getBounds();
+            float w = b.width(), h = b.height(), x = b.left, y = b.top;
+            paint.setStrokeWidth(Math.max(2f, w * 0.08f));
+            RectF screen = new RectF(x + w * 0.10f, y + h * 0.16f, x + w * 0.90f, y + h * 0.72f);
+            c.drawRoundRect(screen, w * 0.08f, w * 0.08f, paint);
+            c.drawLine(x + w * 0.36f, y + h * 0.88f, x + w * 0.64f, y + h * 0.88f, paint);
+            float ay = y + h * 0.44f;
+            c.drawLine(x + w * 0.30f, ay, x + w * 0.62f, ay, paint);
+            c.drawLine(x + w * 0.50f, ay - h * 0.11f, x + w * 0.62f, ay, paint);
+            c.drawLine(x + w * 0.50f, ay + h * 0.11f, x + w * 0.62f, ay, paint);
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+            paint.setAlpha(alpha);
+        }
+
+        @Override
+        public void setColorFilter(ColorFilter cf) {
+            paint.setColorFilter(cf);
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
     }
 
     private int dp(float v) {
