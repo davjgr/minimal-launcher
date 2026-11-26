@@ -18,6 +18,9 @@ import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.media.tv.TvContract;
+import android.media.tv.TvInputInfo;
+import android.media.tv.TvInputManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -77,6 +80,7 @@ public class MainActivity extends Activity {
     private TextView clock;
     private LinearLayout corner;
     private boolean showingAll = false;
+    private boolean showingSources = false;
     private String currentWallpaper = null;
     private Typeface displayFace;
     private Typeface textFace;
@@ -156,6 +160,16 @@ public class MainActivity extends Activity {
         corner = new LinearLayout(this);
         corner.setOrientation(LinearLayout.VERTICAL);
         corner.setGravity(Gravity.END);
+        ImageView srcIv = new ImageView(this);
+        Drawable ownSrc = customIcon("source");
+        srcIv.setImageDrawable(ownSrc != null ? ownSrc : new SourceIcon());
+        corner.addView(makeCornerItem("Source", srcIv, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showingSources = true;
+                render();
+            }
+        }));
         corner.addView(makeCornerItem("All apps", makeGridIcon(), new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -169,7 +183,9 @@ public class MainActivity extends Activity {
                 nextWallpaper();
             }
         }));
-        corner.addView(makeCornerItem("Settings", makeGearIcon(), new View.OnClickListener() {
+        ImageView gearIv = new ImageView(this);
+        gearIv.setImageDrawable(new GearIcon());
+        corner.addView(makeCornerItem("Settings", gearIv, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 safeStart(new Intent(android.provider.Settings.ACTION_SETTINGS));
@@ -203,16 +219,18 @@ public class MainActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         // Home button pressed while we are already open -> back to the home list
-        if (showingAll) {
+        if (showingAll || showingSources) {
             showingAll = false;
+            showingSources = false;
             render();
         }
     }
 
     @Override
     public void onBackPressed() {
-        if (showingAll) {
+        if (showingAll || showingSources) {
             showingAll = false;
+            showingSources = false;
             render();
         }
         // On the home screen, back does nothing (we are the launcher).
@@ -224,7 +242,10 @@ public class MainActivity extends Activity {
         list.removeAllViews();
         PackageManager pm = getPackageManager();
 
-        if (!showingAll) {
+        if (showingSources) {
+            corner.setVisibility(View.GONE);
+            renderSources();
+        } else if (!showingAll) {
             corner.setVisibility(View.VISIBLE);
             Map<String, String> installed = null;
             for (String[] fav : FAVORITES) {
@@ -255,13 +276,7 @@ public class MainActivity extends Activity {
                     }
                 }));
             }
-            Drawable srcIcon = customIcon("source");
-            list.addView(makeRow("Source", srcIcon != null ? srcIcon : new SourceIcon(), null, 40, new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    openSource();
-                }
-            }));
+
         } else {
             corner.setVisibility(View.GONE);
             for (Map.Entry<String, String> app : allApps(true).entrySet()) {
@@ -285,6 +300,62 @@ public class MainActivity extends Activity {
                 }
             });
         }
+    }
+
+    /** List of TV inputs (HDMI, cable/antenna...) from the Android TV input framework. */
+    private void renderSources() {
+        List<TvInputInfo> inputs = new ArrayList<>();
+        try {
+            TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
+            if (tim != null) inputs.addAll(tim.getTvInputList());
+        } catch (Throwable ignored) {
+        }
+        // Tuner (cable/antenna) first, then HDMI etc. by name
+        Collections.sort(inputs, (a, b) -> {
+            boolean ta = a.getType() == TvInputInfo.TYPE_TUNER;
+            boolean tb = b.getType() == TvInputInfo.TYPE_TUNER;
+            if (ta != tb) return ta ? -1 : 1;
+            return inputLabel(a).compareToIgnoreCase(inputLabel(b));
+        });
+        for (final TvInputInfo info : inputs) {
+            if (info.isHidden(this)) continue;
+            list.addView(makeRow(inputLabel(info), null, null, 36, new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    openInput(info);
+                }
+            }));
+        }
+        if (list.getChildCount() == 0) {
+            // Input list not available on this TV -> fall back to the TV app
+            list.addView(makeRow("TV", null, null, 36, new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    openSource();
+                }
+            }));
+        }
+    }
+
+    private String inputLabel(TvInputInfo info) {
+        try {
+            CharSequence custom = info.loadCustomLabel(this);
+            if (custom != null && custom.length() > 0) return custom.toString();
+        } catch (Throwable ignored) {
+        }
+        CharSequence l = info.loadLabel(this);
+        return l == null ? info.getId() : l.toString();
+    }
+
+    private void openInput(TvInputInfo info) {
+        Intent i;
+        if (info.isPassthroughInput()) {
+            i = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(info.getId()));
+        } else {
+            i = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelsUriForInput(info.getId()));
+        }
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (!safeStart(i)) openSource();
     }
 
     private View makeRow(String title, Drawable icon, ColorFilter filter, int textSp,
@@ -668,6 +739,55 @@ public class MainActivity extends Activity {
                 0, 0, 0, 0, 255,
                 1.2f, 2.36f, 0.44f, 0, -800
         }));
+    }
+
+    /** Classic settings gear: toothed wheel with a hole. */
+    private static class GearIcon extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        GearIcon() {
+            paint.setColor(Color.WHITE);
+            paint.setStyle(Paint.Style.FILL);
+        }
+
+        @Override
+        public void draw(Canvas c) {
+            Rect b = getBounds();
+            float cx = b.exactCenterX(), cy = b.exactCenterY();
+            float s = Math.min(b.width(), b.height());
+            float rOuter = s * 0.50f, rRim = s * 0.37f, rHole = s * 0.16f;
+            int teeth = 8;
+            android.graphics.Path path = new android.graphics.Path();
+            path.setFillType(android.graphics.Path.FillType.EVEN_ODD);
+            for (int k = 0; k < teeth; k++) {
+                double a = k * 2 * Math.PI / teeth;
+                double[][] pts = {{a - 0.32, rRim}, {a - 0.20, rOuter}, {a + 0.20, rOuter}, {a + 0.32, rRim}};
+                for (int j = 0; j < pts.length; j++) {
+                    float x = cx + (float) (Math.cos(pts[j][0]) * pts[j][1]);
+                    float y = cy + (float) (Math.sin(pts[j][0]) * pts[j][1]);
+                    if (k == 0 && j == 0) path.moveTo(x, y);
+                    else path.lineTo(x, y);
+                }
+            }
+            path.close();
+            path.addCircle(cx, cy, rHole, android.graphics.Path.Direction.CCW);
+            c.drawPath(path, paint);
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+            paint.setAlpha(alpha);
+        }
+
+        @Override
+        public void setColorFilter(ColorFilter cf) {
+            paint.setColorFilter(cf);
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
     }
 
     /** Minimal "input source" mark: a screen outline with an arrow pointing in. */
