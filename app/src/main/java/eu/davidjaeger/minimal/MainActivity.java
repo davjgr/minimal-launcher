@@ -77,7 +77,7 @@ public class MainActivity extends Activity {
     private TextView clock;
     private LinearLayout corner;
     private boolean showingAll = false;
-    private long wallpaperStamp = -1;
+    private String currentWallpaper = null;
     private Typeface displayFace;
     private Typeface textFace;
 
@@ -163,6 +163,12 @@ public class MainActivity extends Activity {
                 render();
             }
         }));
+        corner.addView(makeCornerItem("Wallpaper", makeFrameIcon(), new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                nextWallpaper();
+            }
+        }));
         corner.addView(makeCornerItem("Settings", makeGearIcon(), new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -223,18 +229,20 @@ public class MainActivity extends Activity {
             for (String[] fav : FAVORITES) {
                 final String pkg = fav[1];
                 if (launchIntentFor(pkg) == null) continue; // not installed -> skip
-                ColorMatrixColorFilter filter =
-                        "mask".equals(fav[2]) ? mask()
-                                : "white".equals(fav[2]) ? whiteOnly()
-                                : monochrome();
-                list.addView(makeRow(fav[0], loadIcon(pkg), filter, 40, new View.OnClickListener() {
+                Drawable own = customIcon(pkg);
+                ColorMatrixColorFilter filter = own != null ? null
+                        : "mask".equals(fav[2]) ? mask()
+                        : "white".equals(fav[2]) ? whiteOnly()
+                        : monochrome();
+                list.addView(makeRow(fav[0], own != null ? own : loadIcon(pkg), filter, 40, new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
                         launch(pkg);
                     }
                 }));
             }
-            list.addView(makeRow("Source", new SourceIcon(), null, 40, new View.OnClickListener() {
+            Drawable srcIcon = customIcon("source");
+            list.addView(makeRow("Source", srcIcon != null ? srcIcon : new SourceIcon(), null, 40, new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     openSource();
@@ -378,6 +386,16 @@ public class MainActivity extends Activity {
         return grid;
     }
 
+    /** Small rounded rectangle as a "wallpaper" mark. */
+    private View makeFrameIcon() {
+        View v = new View(this);
+        GradientDrawable g = new GradientDrawable();
+        g.setCornerRadius(dp(3));
+        g.setStroke(Math.max(2, dp(2)), TEXT_COLOR);
+        v.setBackground(g);
+        return v;
+    }
+
     /** Simple ring as a quiet "settings" mark. */
     private View makeGearIcon() {
         View v = new View(this);
@@ -395,44 +413,112 @@ public class MainActivity extends Activity {
 
     // ---------------------------------------------------------------- wallpaper
 
-    private void loadWallpaper() {
-        File dir = getExternalFilesDir(null);
-        File f = dir == null ? null : new File(dir, "wallpaper.jpg");
-        if (f == null || !f.exists()) {
-            if (wallpaperStamp != 0) {
-                Bitmap builtIn = null;
-                try {
-                    builtIn = BitmapFactory.decodeResource(getResources(), R.drawable.wallpaper_default);
-                } catch (Throwable ignored) {
-                }
-                if (builtIn != null) {
-                    wallpaper.setImageBitmap(builtIn);
-                } else {
-                    wallpaper.setImageDrawable(new GradientDrawable(
-                            GradientDrawable.Orientation.TOP_BOTTOM,
-                            new int[]{0xFF1E3347, 0xFF0E1A26, 0xFF06090D}));
-                }
-                wallpaperStamp = 0;
+    /** All wallpapers: built-in (assets/wallpapers) + own files (files/wallpapers on the TV). */
+    private List<String> wallpaperList() {
+        List<String> out = new ArrayList<>();
+        try {
+            String[] names = getAssets().list("wallpapers");
+            if (names != null) {
+                List<String> sorted = new ArrayList<>();
+                for (String n : names) if (isImage(n)) sorted.add(n);
+                Collections.sort(sorted);
+                for (String n : sorted) out.add("asset:wallpapers/" + n);
             }
+        } catch (Throwable ignored) {
+        }
+        File dir = getExternalFilesDir("wallpapers");
+        if (dir != null) {
+            File[] files = dir.listFiles();
+            if (files != null) {
+                List<String> sorted = new ArrayList<>();
+                for (File f : files) if (isImage(f.getName())) sorted.add(f.getAbsolutePath());
+                Collections.sort(sorted);
+                for (String f : sorted) out.add("file:" + f);
+            }
+        }
+        return out;
+    }
+
+    private static boolean isImage(String n) {
+        String l = n.toLowerCase();
+        return l.endsWith(".jpg") || l.endsWith(".jpeg") || l.endsWith(".png") || l.endsWith(".webp");
+    }
+
+    private void nextWallpaper() {
+        List<String> all = wallpaperList();
+        if (all.isEmpty()) return;
+        int idx = getSharedPreferences("minimal", MODE_PRIVATE).getInt("wallpaper", 0);
+        idx = (idx + 1) % all.size();
+        getSharedPreferences("minimal", MODE_PRIVATE).edit().putInt("wallpaper", idx).apply();
+        currentWallpaper = null;
+        loadWallpaper();
+    }
+
+    private void loadWallpaper() {
+        List<String> all = wallpaperList();
+        if (all.isEmpty()) {
+            wallpaper.setImageDrawable(new GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{0xFF1E3347, 0xFF0E1A26, 0xFF06090D}));
+            currentWallpaper = null;
             return;
         }
-        if (f.lastModified() == wallpaperStamp) return;
+        int idx = getSharedPreferences("minimal", MODE_PRIVATE).getInt("wallpaper", 0);
+        if (idx < 0 || idx >= all.size()) idx = 0;
+        String key = all.get(idx);
+        if (key.equals(currentWallpaper)) return;
+        Bitmap bmp = decodeWallpaper(key);
+        if (bmp != null) {
+            wallpaper.setImageBitmap(bmp);
+            currentWallpaper = key;
+        }
+    }
+
+    private Bitmap decodeWallpaper(String key) {
         try {
+            if (key.startsWith("asset:")) {
+                java.io.InputStream in = getAssets().open(key.substring(6));
+                try {
+                    return BitmapFactory.decodeStream(in);
+                } finally {
+                    in.close();
+                }
+            }
+            String path = key.substring(5);
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;
-            BitmapFactory.decodeFile(f.getAbsolutePath(), bounds);
+            BitmapFactory.decodeFile(path, bounds);
             int sample = 1;
             while (bounds.outWidth / (sample * 2) >= 1920) sample *= 2;
             BitmapFactory.Options opts = new BitmapFactory.Options();
             opts.inSampleSize = sample;
-            Bitmap bmp = BitmapFactory.decodeFile(f.getAbsolutePath(), opts);
-            if (bmp != null) {
-                wallpaper.setImageBitmap(bmp);
-                wallpaperStamp = f.lastModified();
+            return BitmapFactory.decodeFile(path, opts);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** Own icon: assets/icons/<package>.png, or files/icons/<package>.png on the TV. */
+    private Drawable customIcon(String pkg) {
+        File dir = getExternalFilesDir("icons");
+        if (dir != null) {
+            File f = new File(dir, pkg + ".png");
+            if (f.exists()) {
+                Bitmap b = BitmapFactory.decodeFile(f.getAbsolutePath());
+                if (b != null) return new android.graphics.drawable.BitmapDrawable(getResources(), b);
+            }
+        }
+        try {
+            java.io.InputStream in = getAssets().open("icons/" + pkg + ".png");
+            try {
+                Bitmap b = BitmapFactory.decodeStream(in);
+                if (b != null) return new android.graphics.drawable.BitmapDrawable(getResources(), b);
+            } finally {
+                in.close();
             }
         } catch (Throwable ignored) {
-            // keep previous wallpaper
         }
+        return null;
     }
 
     // ---------------------------------------------------------------- apps
