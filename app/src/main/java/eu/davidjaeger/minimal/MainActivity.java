@@ -269,7 +269,8 @@ public class MainActivity extends Activity {
                     if (found == null) continue; // not installed -> skip
                 }
                 final String pkg = found;
-                Drawable own = customIcon(pkg);
+                Drawable own = customIcon(slug(fav[0]));
+                if (own == null) own = customIcon(pkg);
                 ColorMatrixColorFilter filter = own != null ? null
                         : "mask".equals(fav[2]) ? mask()
                         : "white".equals(fav[2]) ? whiteOnly()
@@ -383,7 +384,9 @@ public class MainActivity extends Activity {
             iv.setImageDrawable(icon);
             if (filter != null) iv.setColorFilter(filter);
         }
-        LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(iconSize, iconSize);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        // icon column is 1.5x wide so wide logos (e.g. a wordmark) fit next to square ones
+        LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams((int) (iconSize * 1.5f), iconSize);
         ivLp.rightMargin = dp(14);
         row.addView(iv, ivLp);
 
@@ -589,6 +592,10 @@ public class MainActivity extends Activity {
     }
 
     /** Own icon: assets/icons/<package>.png, or files/icons/<package>.png on the TV. */
+    private static String slug(String name) {
+        return name.toLowerCase().replaceAll("[^a-z0-9]", "");
+    }
+
     private Drawable customIcon(String pkg) {
         File dir = getExternalFilesDir("icons");
         if (dir != null) {
