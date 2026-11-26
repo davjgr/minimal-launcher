@@ -54,11 +54,11 @@ public class MainActivity extends Activity {
     // icon style: "mono" = app icon in grey/white, "mask" = only the bright
     // shape of the app icon on a transparent background.
     private static final String[][] FAVORITES = {
-            {"YouTube", "com.google.android.youtube.tv", "mono"},
+            {"YouTube", "com.google.android.youtube.tv", "white"},
             {"Prime Video", "com.amazon.amazonvideo.livingroom", "mono"},
             {"Netflix", "com.netflix.ninja", "mask"},
             {"MUBI", "com.mubi", "mono"},
-            {"Disney+", "com.disney.disneyplus", "mono"},
+            {"Disney+", "com.disney.disneyplus", "white"},
             {"Apple TV", "com.apple.atve.androidtv.appletv", "mono"},
             {"Spotify", "com.spotify.tv.android", "mono"},
     };
@@ -219,7 +219,10 @@ public class MainActivity extends Activity {
             for (String[] fav : FAVORITES) {
                 final String pkg = fav[1];
                 if (launchIntentFor(pkg) == null) continue; // not installed -> skip
-                ColorMatrixColorFilter filter = "mask".equals(fav[2]) ? mask() : monochrome();
+                ColorMatrixColorFilter filter =
+                        "mask".equals(fav[2]) ? mask()
+                                : "white".equals(fav[2]) ? whiteOnly()
+                                : monochrome();
                 list.addView(makeRow(fav[0], loadIcon(pkg), filter, 40, new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
@@ -532,6 +535,16 @@ public class MainActivity extends Activity {
                 0, 0, 0, 0, 255,
                 0, 0, 0, 0, 255,
                 0.9f, 1.8f, 0.35f, 0, -40
+        }));
+    }
+
+    /** Keeps only near-white parts of an icon (e.g. a white glyph on a coloured tile). */
+    private static ColorMatrixColorFilter whiteOnly() {
+        return new ColorMatrixColorFilter(new ColorMatrix(new float[]{
+                0, 0, 0, 0, 255,
+                0, 0, 0, 0, 255,
+                0, 0, 0, 0, 255,
+                1.2f, 2.36f, 0.44f, 0, -800
         }));
     }
 
