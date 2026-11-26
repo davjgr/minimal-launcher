@@ -226,9 +226,23 @@ public class MainActivity extends Activity {
 
         if (!showingAll) {
             corner.setVisibility(View.VISIBLE);
+            Map<String, String> installed = null;
             for (String[] fav : FAVORITES) {
-                final String pkg = fav[1];
-                if (launchIntentFor(pkg) == null) continue; // not installed -> skip
+                String found = fav[1];
+                if (launchIntentFor(found) == null) {
+                    // package name differs on this TV? -> find the app by its name
+                    if (installed == null) installed = allApps(false);
+                    found = null;
+                    for (Map.Entry<String, String> e : installed.entrySet()) {
+                        if (e.getValue().trim().equalsIgnoreCase(fav[0])
+                                || e.getValue().toLowerCase().startsWith(fav[0].toLowerCase())) {
+                            found = e.getKey();
+                            break;
+                        }
+                    }
+                    if (found == null) continue; // not installed -> skip
+                }
+                final String pkg = found;
                 Drawable own = customIcon(pkg);
                 ColorMatrixColorFilter filter = own != null ? null
                         : "mask".equals(fav[2]) ? mask()
@@ -250,7 +264,7 @@ public class MainActivity extends Activity {
             }));
         } else {
             corner.setVisibility(View.GONE);
-            for (Map.Entry<String, String> app : allApps().entrySet()) {
+            for (Map.Entry<String, String> app : allApps(true).entrySet()) {
                 final String pkg = app.getKey();
                 list.addView(makeRow(app.getValue(), loadIcon(pkg), monochrome(), 30, new View.OnClickListener() {
                     @Override
@@ -576,7 +590,24 @@ public class MainActivity extends Activity {
     }
 
     /** Sorted map package -> label of every launchable app (TV and phone apps). */
-    private Map<String, String> allApps() {
+    // Hidden from "All apps": system parts, TCL tools, regional bloat, launchers.
+    private static final String[] HIDDEN_PREFIXES = {
+            "com.tcl.", "com.android.", "com.google.android.", "uk.co.freeview.",
+            "au.com.stan", "tv.wuaki", "com.tvos", "android.", "com.spocky.",
+            "app.olauncher", "com.slate.launcher"
+    };
+    // ...except these, which stay visible.
+    private static final String[] ALWAYS_SHOW = {
+            "com.google.android.youtube.tv", "com.android.vending"
+    };
+
+    private static boolean isHidden(String pkg) {
+        for (String keep : ALWAYS_SHOW) if (pkg.equals(keep)) return false;
+        for (String pre : HIDDEN_PREFIXES) if (pkg.startsWith(pre)) return true;
+        return false;
+    }
+
+    private Map<String, String> allApps(boolean filtered) {
         PackageManager pm = getPackageManager();
         List<ResolveInfo> found = new ArrayList<>();
         String[] categories = {Intent.CATEGORY_LEANBACK_LAUNCHER, Intent.CATEGORY_LAUNCHER};
@@ -592,6 +623,7 @@ public class MainActivity extends Activity {
         for (ResolveInfo ri : found) {
             String pkg = ri.activityInfo.packageName;
             if (pkg.equals(getPackageName()) || byPkg.containsKey(pkg)) continue;
+            if (filtered && isHidden(pkg)) continue;
             CharSequence label = ri.loadLabel(pm);
             byPkg.put(pkg, label == null ? pkg : label.toString());
         }
