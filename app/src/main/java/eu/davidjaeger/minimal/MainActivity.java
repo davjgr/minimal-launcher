@@ -1,6 +1,7 @@
 package eu.davidjaeger.minimal;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -9,7 +10,11 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Shader;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RectF;
@@ -127,21 +132,21 @@ public class MainActivity extends Activity {
         scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setVerticalFadingEdgeEnabled(true);
-        scroll.setFadingEdgeLength(dp(72));
-        scroll.setClipToPadding(false);
-        scroll.setPadding(0, dp(24), 0, dp(24));
+        scroll.setFadingEdgeLength(dp(120)); // keeps the focused app out of the fade zones
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(0, dp(40), dp(40), dp(80));
+        list.setPadding(0, dp(110), dp(40), dp(140));
         scroll.addView(list, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         FrameLayout.LayoutParams scLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
                 Gravity.START);
         scLp.leftMargin = dp(48);
-        scLp.topMargin = dp(40);
-        scLp.bottomMargin = dp(24);
-        root.addView(scroll, scLp);
+        // Soft fade-out at the top and bottom screen edges while scrolling
+        FadeFrame fadeFrame = new FadeFrame(this, dp(130));
+        fadeFrame.addView(scroll, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(fadeFrame, scLp);
 
         // Clock (top right)
         clock = new TextView(this);
@@ -739,6 +744,33 @@ public class MainActivity extends Activity {
                 0, 0, 0, 0, 255,
                 1.2f, 2.36f, 0.44f, 0, -800
         }));
+    }
+
+    /** Container that fades its content out towards the top and bottom edge. */
+    private static class FadeFrame extends FrameLayout {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final int fade;
+
+        FadeFrame(Context context, int fadePx) {
+            super(context);
+            fade = fadePx;
+            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
+            setLayerType(LAYER_TYPE_HARDWARE, null);
+        }
+
+        @Override
+        protected void dispatchDraw(Canvas c) {
+            int w = getWidth(), h = getHeight();
+            int save = c.saveLayer(0, 0, w, h, null);
+            super.dispatchDraw(c);
+            paint.setShader(new LinearGradient(0, 0, 0, fade,
+                    0xFF000000, 0x00000000, Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, fade, paint);
+            paint.setShader(new LinearGradient(0, h - fade, 0, h,
+                    0x00000000, 0xFF000000, Shader.TileMode.CLAMP));
+            c.drawRect(0, h - fade, w, h, paint);
+            c.restoreToCount(save);
+        }
     }
 
     /** Classic settings gear: toothed wheel with a hole. */
