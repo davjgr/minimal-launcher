@@ -63,10 +63,10 @@ public class MainActivity extends Activity {
     // shape of the app icon on a transparent background.
     private static final String[][] FAVORITES = {
             {"YouTube", "com.google.android.youtube.tv", "white"},
-            {"Prime Video", "com.amazon.amazonvideo.livingroom", "mono"},
-            {"Netflix", "com.netflix.ninja", "mask"},
             {"MUBI", "com.mubi", "mono"},
+            {"Prime Video", "com.amazon.amazonvideo.livingroom", "mono"},
             {"Disney+", "com.disney.disneyplus", "white"},
+            {"Netflix", "com.netflix.ninja", "mask"},
             {"Apple TV", "com.apple.atve.androidtv.appletv", "mono"},
             {"Spotify", "com.spotify.tv.android", "mono"},
     };
@@ -151,10 +151,8 @@ public class MainActivity extends Activity {
         // Clock (top right)
         clock = new TextView(this);
         clock.setTextColor(TEXT_COLOR);
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 60);
-        clock.setLetterSpacing(-0.04f);
-        clock.setIncludeFontPadding(false);
-        clock.setTypeface(loadFont("fonts/clock.ttf"));
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34);
+        clock.setTypeface(displayFace);
         clock.setShadowLayer(dp(6), 0, 0, 0x66000000);
         FrameLayout.LayoutParams clLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
