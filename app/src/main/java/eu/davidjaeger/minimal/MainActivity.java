@@ -151,8 +151,10 @@ public class MainActivity extends Activity {
         // Clock (top right)
         clock = new TextView(this);
         clock.setTextColor(TEXT_COLOR);
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34);
-        clock.setTypeface(displayFace);
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 60);
+        clock.setLetterSpacing(-0.04f);
+        clock.setIncludeFontPadding(false);
+        clock.setTypeface(loadFont("fonts/clock.ttf"));
         clock.setShadowLayer(dp(6), 0, 0, 0x66000000);
         FrameLayout.LayoutParams clLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -163,34 +165,28 @@ public class MainActivity extends Activity {
 
         // All apps / Settings (bottom right)
         corner = new LinearLayout(this);
-        corner.setOrientation(LinearLayout.VERTICAL);
-        corner.setGravity(Gravity.END);
+        corner.setOrientation(LinearLayout.HORIZONTAL);
+        corner.setGravity(Gravity.CENTER_VERTICAL);
         ImageView srcIv = new ImageView(this);
         Drawable ownSrc = customIcon("source");
         srcIv.setImageDrawable(ownSrc != null ? ownSrc : new SourceIcon());
-        corner.addView(makeCornerItem("Source", srcIv, new View.OnClickListener() {
+        corner.addView(makeCornerItem(srcIv, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 showingSources = true;
                 render();
             }
         }));
-        corner.addView(makeCornerItem("All apps", makeGridIcon(), new View.OnClickListener() {
+        corner.addView(makeCornerItem(makeGridIcon(), new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 showingAll = true;
                 render();
             }
         }));
-        corner.addView(makeCornerItem("Wallpaper", makeFrameIcon(), new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                nextWallpaper();
-            }
-        }));
         ImageView gearIv = new ImageView(this);
         gearIv.setImageDrawable(new GearIcon());
-        corner.addView(makeCornerItem("Settings", gearIv, new View.OnClickListener() {
+        corner.addView(makeCornerItem(gearIv, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 safeStart(new Intent(android.provider.Settings.ACTION_SETTINGS));
@@ -323,8 +319,11 @@ public class MainActivity extends Activity {
             if (ta != tb) return ta ? -1 : 1;
             return inputLabel(a).compareToIgnoreCase(inputLabel(b));
         });
+        java.util.Set<String> seen = new java.util.HashSet<>();
         for (final TvInputInfo info : inputs) {
             if (info.isHidden(this)) continue;
+            if (!isBuiltInInput(info)) continue;
+            if (!seen.add(inputLabel(info).toLowerCase())) continue;
             list.addView(makeRow(inputLabel(info), null, null, 36, new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -340,6 +339,19 @@ public class MainActivity extends Activity {
                     openSource();
                 }
             }));
+        }
+    }
+
+    /** True for the TV's own inputs (tuner, HDMI...), false for inputs added by apps. */
+    private static boolean isBuiltInInput(TvInputInfo info) {
+        try {
+            String pkg = info.getServiceInfo().packageName;
+            if (pkg.startsWith("com.google.android.videos")) return false;
+            int flags = info.getServiceInfo().applicationInfo.flags;
+            boolean system = (flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0;
+            return system && (info.isPassthroughInput() || info.getType() == TvInputInfo.TYPE_TUNER);
+        } catch (Throwable t) {
+            return true;
         }
     }
 
@@ -416,28 +428,20 @@ public class MainActivity extends Activity {
         return row;
     }
 
-    private View makeCornerItem(String title, View icon, View.OnClickListener onClick) {
+    private View makeCornerItem(View icon, View.OnClickListener onClick) {
         final LinearLayout item = new LinearLayout(this);
         item.setOrientation(LinearLayout.HORIZONTAL);
         item.setGravity(Gravity.CENTER_VERTICAL);
         item.setFocusable(true);
         item.setClickable(true);
-        item.setPadding(dp(12), dp(6), dp(12), dp(6));
+        item.setPadding(dp(12), dp(12), dp(12), dp(12));
         item.setOnClickListener(onClick);
 
         final GradientDrawable focusBg = new GradientDrawable();
         focusBg.setCornerRadius(dp(12));
         focusBg.setColor(0x26FFFFFF);
 
-        TextView tv = new TextView(this);
-        tv.setText(title);
-        tv.setTextColor(TEXT_COLOR);
-        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        tv.setTypeface(textFace);
-        item.addView(tv);
-
-        LinearLayout.LayoutParams icLp = new LinearLayout.LayoutParams(dp(16), dp(16));
-        icLp.leftMargin = dp(10);
+        LinearLayout.LayoutParams icLp = new LinearLayout.LayoutParams(dp(22), dp(22));
         item.addView(icon, icLp);
 
         item.setAlpha(0.8f);
@@ -451,7 +455,7 @@ public class MainActivity extends Activity {
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = dp(4);
+        lp.leftMargin = dp(6);
         item.setLayoutParams(lp);
         return item;
     }
@@ -681,7 +685,7 @@ public class MainActivity extends Activity {
     };
     // ...except these, which stay visible.
     private static final String[] ALWAYS_SHOW = {
-            "com.google.android.youtube.tv", "com.android.vending"
+            "com.google.android.youtube.tv", "com.android.vending", "com.google.android.videos"
     };
 
     private static boolean isHidden(String pkg) {
