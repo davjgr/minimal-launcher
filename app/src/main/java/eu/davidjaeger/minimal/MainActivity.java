@@ -78,6 +78,8 @@ public class MainActivity extends Activity {
     private LinearLayout corner;
     private boolean showingAll = false;
     private long wallpaperStamp = -1;
+    private Typeface displayFace;
+    private Typeface textFace;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() {
@@ -93,6 +95,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        displayFace = loadFont("fonts/display.ttf");
+        textFace = loadFont("fonts/text.ttf");
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
@@ -138,8 +142,8 @@ public class MainActivity extends Activity {
         // Clock (top right)
         clock = new TextView(this);
         clock.setTextColor(TEXT_COLOR);
-        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
-        clock.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34);
+        clock.setTypeface(displayFace);
         clock.setShadowLayer(dp(6), 0, 0, 0x66000000);
         FrameLayout.LayoutParams clLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -289,7 +293,7 @@ public class MainActivity extends Activity {
         tv.setText(title);
         tv.setTextColor(TEXT_COLOR);
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSp);
-        tv.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        tv.setTypeface(displayFace);
         tv.setLetterSpacing(-0.02f);
         tv.setShadowLayer(dp(8), 0, 0, 0x55000000);
         tv.setSingleLine(true);
@@ -328,7 +332,7 @@ public class MainActivity extends Activity {
         tv.setText(title);
         tv.setTextColor(TEXT_COLOR);
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        tv.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        tv.setTypeface(textFace);
         item.addView(tv);
 
         LinearLayout.LayoutParams icLp = new LinearLayout.LayoutParams(dp(16), dp(16));
@@ -586,6 +590,14 @@ public class MainActivity extends Activity {
         @Override
         public int getOpacity() {
             return PixelFormat.TRANSLUCENT;
+        }
+    }
+
+    private Typeface loadFont(String asset) {
+        try {
+            return Typeface.createFromAsset(getAssets(), asset);
+        } catch (Throwable t) {
+            return Typeface.create("sans-serif-medium", Typeface.NORMAL);
         }
     }
 
