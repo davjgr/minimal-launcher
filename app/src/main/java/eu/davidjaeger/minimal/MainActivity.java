@@ -69,6 +69,7 @@ public class MainActivity extends Activity {
             {"Netflix", "com.netflix.ninja", "mask"},
             {"Apple TV", "com.apple.atve.androidtv.appletv", "mono"},
             {"Spotify", "com.spotify.tv.android", "mono"},
+            {"NTS Radio", "internal:nts", "none"},
     };
 
     // "Source" entry: first package that can be launched wins.
@@ -248,6 +249,15 @@ public class MainActivity extends Activity {
             corner.setVisibility(View.VISIBLE);
             Map<String, String> installed = null;
             for (String[] fav : FAVORITES) {
+                if (fav[1].equals("internal:nts")) {
+                    list.addView(makeRow(fav[0], customIcon(slug(fav[0])), null, 40, new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            safeStart(new Intent(MainActivity.this, NtsActivity.class));
+                        }
+                    }));
+                    continue;
+                }
                 String found = fav[1];
                 if (launchIntentFor(found) == null) {
                     // package name differs on this TV? -> find the app by its name
